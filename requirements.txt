@@ -5,6 +5,7 @@ python-multipart==0.0.9
 # 얼굴 감정 분석
 fer==22.5.1
 tensorflow==2.20.0
+moviepy
 
 # 얼굴 랜드마크 (눈썹 찡그림 / EAR / 고개 기울기)
 mediapipe==0.10.33
