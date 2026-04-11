@@ -252,7 +252,7 @@ class FaceAnalyzer:
 
     # ── 강의 텍스트 요약 ──────────────────────────────────────────────────────
 
-    def summarize(self, audio_text: str) -> str:
+    def summarize(self, audio_text: str) -> dict:
         """
         혼란 이벤트 직후 2분간 녹음된 강의 STT 텍스트를 GPT로 요약합니다.
 
@@ -263,14 +263,16 @@ class FaceAnalyzer:
 
         Returns
         -------
-        str
-            GPT가 생성한 요약문
+        dict
+            GPT가 생성한 요약문과 추가 설명 권장 개념
         """
         system_prompt = (
             "당신은 교육 현장의 강의 내용을 분석하는 전문가입니다.\n"
             "아래는 교육생이 혼란을 느낀 시점 직후 2분간 녹음된 강의 텍스트입니다.\n"
-            "강사가 무엇을 설명하고 있었는지 핵심 내용을 3~5문장으로 요약해주세요.\n"
-            "교육생이 어느 부분에서 어려움을 느꼈을지 추정하여 마지막에 한 문장으로 덧붙여주세요.\n"
+            "응답은 반드시 아래 JSON 형식으로만 작성하세요.\n"
+            "{\"summary\": \"3~5문장 요약\", \"recommendedConcept\": \"교육생에게 추가로 설명하면 좋을 개념 한 줄\"}\n"
+            "summary에는 강사가 무엇을 설명하고 있었는지 핵심 내용만 간결하게 요약하세요.\n"
+            "recommendedConcept에는 교육생이 특히 헷갈렸을 가능성이 높은 개념이나 보충 설명 포인트를 한 줄로 작성하세요.\n"
             "응답은 한국어로 작성하세요."
         )
         try:
@@ -283,10 +285,24 @@ class FaceAnalyzer:
                 temperature=0.3,
                 max_completion_tokens=300,
             )
-            return response.choices[0].message.content.strip()
+            raw = response.choices[0].message.content.strip()
+            parsed = json.loads(raw)
+            return {
+                "summary": parsed.get("summary", "").strip(),
+                "recommendedConcept": parsed.get("recommendedConcept", "").strip(),
+            }
+        except json.JSONDecodeError:
+            logger.error("요약 GPT 응답 파싱 실패: %s", raw if "raw" in locals() else "")
+            return {
+                "summary": raw if "raw" in locals() else "",
+                "recommendedConcept": "",
+            }
         except Exception as e:
             logger.error("요약 GPT 호출 오류: %s", e)
-            return f"요약 생성 실패: {e}"
+            return {
+                "summary": f"요약 생성 실패: {e}",
+                "recommendedConcept": "",
+            }
 
     # ── 유틸 ─────────────────────────────────────────────────────────────────
 

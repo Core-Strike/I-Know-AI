@@ -101,10 +101,13 @@ async def summarize(body: SummarizeRequest):
     if not body.audioText.strip():
         raise HTTPException(status_code=400, detail="audioText is empty.")
 
-    summary = analyzer.summarize(body.audioText)
+    result = analyzer.summarize(body.audioText)
     logger.info("summarize textLen=%d", len(body.audioText))
 
-    return SummarizeResponse(summary=summary)
+    return SummarizeResponse(
+        summary=result["summary"],
+        recommendedConcept=result["recommendedConcept"],
+    )
 
 
 @app.get("/health", summary="Health check")
