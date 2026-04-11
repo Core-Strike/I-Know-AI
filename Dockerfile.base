@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     libglib2.0-0 \
     libgomp1 \
+    libgles2 \
+    libegl1 \
     && rm -rf /var/lib/apt/lists/*
 
 # 무거운 패키지만 미리 설치 (requirements.txt 변경 시에만 재빌드)

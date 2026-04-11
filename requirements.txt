@@ -3,14 +3,18 @@ uvicorn[standard]==0.29.0
 python-multipart==0.0.9
 
 # 얼굴 감정 분석
-fer==22.5.1
+# --no-deps: facenet-pytorch(torch) 의존성 제외 — mtcnn=False 사용으로 불필요
+fer==22.5.1 --no-deps
 tensorflow==2.20.0
-moviepy<2
+moviepy
+imageio
+imageio-ffmpeg
+Pillow
 
-# 얼굴 랜드마크 (눈썹 찡그림 / EAR / 고개 기울기)
+# 얼굴 랜드마크
 mediapipe==0.10.33
 
-# 이미지 처리 (Python 3.13 호환 버전으로 고정 해제)
+# 이미지 처리
 opencv-python-headless
 numpy>=2.0.0
 
