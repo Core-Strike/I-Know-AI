@@ -13,4 +13,9 @@ RUN apt-get update && apt-get install -y \
 
 # 무거운 패키지만 미리 설치 (requirements.txt 변경 시에만 재빌드)
 COPY requirements.txt .
+
+# fer는 facenet-pytorch(torch) 의존성을 제외하고 설치 (mtcnn=False 사용으로 불필요)
+RUN pip install fer==22.5.1 --no-deps
+
+# 나머지 패키지 설치
 RUN pip install -r requirements.txt
