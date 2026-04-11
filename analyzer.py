@@ -250,6 +250,44 @@ class FaceAnalyzer:
             "face_features": features,
         }
 
+    # ── 강의 텍스트 요약 ──────────────────────────────────────────────────────
+
+    def summarize(self, audio_text: str) -> str:
+        """
+        혼란 이벤트 직후 2분간 녹음된 강의 STT 텍스트를 GPT로 요약합니다.
+
+        Parameters
+        ----------
+        audio_text : str
+            STT 변환된 강의 원문 텍스트
+
+        Returns
+        -------
+        str
+            GPT가 생성한 요약문
+        """
+        system_prompt = (
+            "당신은 교육 현장의 강의 내용을 분석하는 전문가입니다.\n"
+            "아래는 교육생이 혼란을 느낀 시점 직후 2분간 녹음된 강의 텍스트입니다.\n"
+            "강사가 무엇을 설명하고 있었는지 핵심 내용을 3~5문장으로 요약해주세요.\n"
+            "교육생이 어느 부분에서 어려움을 느꼈을지 추정하여 마지막에 한 문장으로 덧붙여주세요.\n"
+            "응답은 한국어로 작성하세요."
+        )
+        try:
+            response = self._gpt.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user",   "content": f"강의 텍스트:\n{audio_text}"},
+                ],
+                temperature=0.3,
+                max_completion_tokens=300,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.error("요약 GPT 호출 오류: %s", e)
+            return f"요약 생성 실패: {e}"
+
     # ── 유틸 ─────────────────────────────────────────────────────────────────
 
     def _decode_image(self, image_bytes: bytes):

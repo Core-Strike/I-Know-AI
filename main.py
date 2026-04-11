@@ -22,7 +22,7 @@ from fastapi import FastAPI, File, UploadFile, HTTPException, Path
 from fastapi.middleware.cors import CORSMiddleware
 
 from analyzer import FaceAnalyzer
-from models import AnalyzeResponse, ErrorResponse
+from models import AnalyzeResponse, SummarizeRequest, SummarizeResponse, ErrorResponse
 
 # ── 로깅 설정 ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -56,7 +56,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],       # 운영 환경에서는 Spring/프론트 도메인으로 좁히세요
-    allow_methods=["POST", "GET"],
+    allow_methods=["POST", "GET", "DELETE"],
     allow_headers=["*"],
 )
 
@@ -112,6 +112,36 @@ async def analyze(
         emotion=result["emotion"],
         gpt_reason=result["gpt_reason"],
         face_features=result["face_features"],
+    )
+
+
+@app.post(
+    "/ai-api/summarize",
+    response_model=SummarizeResponse,
+    responses={400: {"model": ErrorResponse}},
+    summary="강의 텍스트 AI 요약",
+    description=(
+        "혼란 이벤트 발생 후 2분간 녹음된 강의 STT 텍스트를 받아 "
+        "GPT로 요약문을 생성합니다. Spring에서 위임 호출합니다."
+    ),
+)
+async def summarize(body: SummarizeRequest):
+    if not body.audioText.strip():
+        raise HTTPException(status_code=400, detail="audioText가 비어있습니다.")
+
+    summary = analyzer.summarize(body.audioText)
+
+    logger.info(
+        "summarize  alertId=%s  sessionId=%s  textLen=%d",
+        body.alertId,
+        body.sessionId,
+        len(body.audioText),
+    )
+
+    return SummarizeResponse(
+        alertId=body.alertId,
+        summary=summary,
+        audioText=body.audioText,
     )
 
 

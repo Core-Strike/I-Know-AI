@@ -8,6 +8,7 @@ moviepy==1.0.3
 imageio
 imageio-ffmpeg
 Pillow
+pandas
 
 # 얼굴 랜드마크
 mediapipe==0.10.33

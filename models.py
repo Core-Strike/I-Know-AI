@@ -22,5 +22,19 @@ class AnalyzeResponse(BaseModel):
         populate_by_name = True
 
 
+class SummarizeRequest(BaseModel):
+    """POST /summarize 요청"""
+    alertId:   int = Field(..., description="Alert ID (Spring 연동용)")
+    sessionId: str = Field(..., description="세션 ID")
+    audioText: str = Field(..., description="STT로 변환된 강의 원문 텍스트")
+
+
+class SummarizeResponse(BaseModel):
+    """POST /summarize 응답"""
+    alertId:   int = Field(..., description="Alert ID")
+    summary:   str = Field(..., description="GPT가 생성한 요약문")
+    audioText: str = Field(..., description="원문 텍스트 (그대로 반환)")
+
+
 class ErrorResponse(BaseModel):
     detail: str
