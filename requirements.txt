@@ -4,7 +4,7 @@ python-multipart==0.0.9
 
 # 얼굴 감정 분석 (facenet-pytorch/torch는 Dockerfile.base에서 --no-deps로 별도 설치)
 tensorflow==2.20.0
-moviepy
+moviepy==1.0.3
 imageio
 imageio-ffmpeg
 Pillow
