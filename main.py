@@ -109,6 +109,7 @@ async def summarize(body: SummarizeRequest):
     return SummarizeResponse(
         summary=result["summary"],
         recommendedConcept=result["recommendedConcept"],
+        keywords=result.get("keywords", []),
     )
 
 

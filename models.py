@@ -29,6 +29,10 @@ class SummarizeResponse(BaseModel):
         ...,
         description="Concept the instructor may want to additionally explain to students",
     )
+    keywords: list[str] = Field(
+        default_factory=list,
+        description="Up to three concise keywords extracted from the lecture",
+    )
 
 
 class ErrorResponse(BaseModel):
