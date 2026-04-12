@@ -6,7 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, HTTPException, Path, UploadFile
+from fastapi import APIRouter, FastAPI, File, HTTPException, Path, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from analyzer import FaceAnalyzer
@@ -40,6 +40,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+router = APIRouter(prefix="/ai-api")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -48,7 +50,7 @@ app.add_middleware(
 )
 
 
-@app.post(
+@router.post(
     "/analyze/{student_id}",
     response_model=AnalyzeResponse,
     responses={400: {"model": ErrorResponse}, 422: {"model": ErrorResponse}},
@@ -91,8 +93,8 @@ async def analyze(
     )
 
 
-@app.post(
-    "/ai-api/summarize",
+@router.post(
+    "/summarize",
     response_model=SummarizeResponse,
     responses={400: {"model": ErrorResponse}},
     summary="Summarize a lecture transcript",
@@ -110,6 +112,9 @@ async def summarize(body: SummarizeRequest):
     )
 
 
-@app.get("/health", summary="Health check")
+@router.get("/health", summary="Health check")
 async def health():
     return {"status": "ok", "analyzer_ready": analyzer is not None}
+
+
+app.include_router(router)
