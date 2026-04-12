@@ -172,12 +172,16 @@ class FaceAnalyzer:
             gpt_reason = f"GPT 호출 오류: {e}"
 
         logger.info("confused=%s | reason=%s", confused, gpt_reason)
+        signal_type, signal_subtype, signal_label = self._classify_signal(features, confused)
 
         return {
             "confused": confused,
             "confidence": features["confidence"],
             "emotion": features["top_emotion"],
             "gpt_reason": gpt_reason,
+            "signal_type": signal_type,
+            "signal_subtype": signal_subtype,
+            "signal_label": signal_label,
             "face_features": features,
         }
 
@@ -269,6 +273,35 @@ class FaceAnalyzer:
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
     @staticmethod
+    def _classify_signal(features: dict, confused: bool) -> tuple[str, str, str]:
+        if not confused:
+            return "FACIAL_INSTABILITY", "LOW_SIGNAL", "표정 기반 불안정"
+
+        if not features.get("face_detected", False):
+            return "GAZE_AWAY", "FACE_MISSING", "시선 이탈 / 화면 이탈"
+
+        head_tilt_deg = abs(features.get("head_tilt_deg") or 0.0)
+        if head_tilt_deg >= 20:
+            return "GAZE_AWAY", "HEAD_TURNED", "시선 이탈 / 화면 이탈"
+
+        ear = features.get("ear")
+        if ear is not None and ear > 0 and ear < 0.18:
+            return "GAZE_AWAY", "EYES_CLOSED", "시선 이탈 / 화면 이탈"
+
+        top_emotion = str(features.get("top_emotion") or "unknown").strip().lower()
+        emotion_subtypes = {
+            "fear": "FEAR_DOMINANT",
+            "sad": "SAD_DOMINANT",
+            "surprise": "SURPRISE_DOMINANT",
+            "angry": "ANGRY_TENSION",
+            "disgust": "DISGUST_TENSION",
+        }
+        if top_emotion in emotion_subtypes:
+            return "FACIAL_INSTABILITY", emotion_subtypes[top_emotion], "표정 기반 불안정"
+
+        return "FACIAL_INSTABILITY", "CONFUSED_PATTERN", "표정 기반 불안정"
+
+    @staticmethod
     def _fallback(reason: str) -> dict:
         logger.debug("Analysis fallback: %s", reason)
         return {
@@ -276,5 +309,8 @@ class FaceAnalyzer:
             "confidence": 0.0,
             "emotion": "unknown",
             "gpt_reason": reason,
+            "signal_type": "GAZE_AWAY",
+            "signal_subtype": "FACE_MISSING",
+            "signal_label": "시선 이탈 / 화면 이탈",
             "face_features": {"face_detected": False},
         }

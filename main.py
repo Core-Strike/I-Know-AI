@@ -89,6 +89,9 @@ async def analyze(
         confidence=result["confidence"],
         emotion=result["emotion"],
         gpt_reason=result["gpt_reason"],
+        signal_type=result["signal_type"],
+        signal_subtype=result["signal_subtype"],
+        signal_label=result["signal_label"],
         face_features=result["face_features"],
     )
 
