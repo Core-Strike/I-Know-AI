@@ -35,7 +35,7 @@ GPT_SYSTEM_PROMPT = """\
 당신은 교육 현장에서 교육생의 표정 데이터를 분석해 이해 여부를 판단하는 전문가입니다.
 아래 얼굴 표정 지표를 보고, 이 교육생이 현재 강의 내용을 이해하지 못해 혼란스러워하는지 종합적으로 판단하세요.
 
-반드시 아래 JSON 형식으로만 응답하세요:
+반드시 아래 JSON 형식으로만 응답하세요.
 {"confused": true, "reason": "한 문장 이유"}
 """
 
@@ -147,7 +147,7 @@ class FaceAnalyzer:
         return float(abs(math.degrees(math.atan2(right_cy - left_cy, right_cx - left_cx + 1e-6))))
 
     def _gpt_judge(self, features: dict) -> dict:
-        user_content = f"얼굴 표정 지표\n{json.dumps(features, ensure_ascii=False, indent=2)}"
+        user_content = f"얼굴 표정 지표:\n{json.dumps(features, ensure_ascii=False, indent=2)}"
         confused, gpt_reason = False, ""
 
         try:
@@ -187,20 +187,21 @@ class FaceAnalyzer:
 
     def summarize(self, audio_text: str) -> dict:
         system_prompt = (
-            "당신은 교육 현장의 강의 내용을 요약하는 도우미입니다.\n"
-            "아래 입력은 교육생이 헷갈려한 시점 직후 녹음된 강의 전사입니다.\n"
+            "당신은 교육 현장에서 강의 내용을 요약하는 도우미입니다.\n"
+            "아래 입력은 교육생이 혼란을 느낀 직후 녹음된 강의 전사입니다.\n"
             "반드시 아래 JSON 형식으로만 응답하세요.\n"
-            "{\"summary\": \"반드시 2문장 요약\", \"recommendedConcept\": \"교육생에게 추가로 설명하면 좋을 개념 한 줄\", \"keywords\": [\"3단어 이하 키워드\", \"3단어 이하 키워드\", \"3단어 이하 키워드\"]}\n"
+            '{"summary": "반드시 2문장 요약", "recommendedConcept": "교육생에게 추가로 설명하면 좋을 개념 한 줄", '
+            '"keywords": ["3단어 이하 키워드", "3단어 이하 키워드", "3단어 이하 키워드"]}\n'
             "summary는 반드시 한국어 2문장으로만 작성하세요.\n"
-            "recommendedConcept에는 교육생이 특히 헷갈렸을 가능성이 높은 개념이나 보충 설명 포인트를 한 줄로 작성하세요."
-            "keywords에는 강의 핵심 키워드를 최대 3개까지 넣고, 각 항목은 반드시 3단어 이하로 작성하세요."
+            "recommendedConcept는 교육생이 헷갈렸을 가능성이 높은 개념이나 보충 설명 포인트 한 줄로 작성하세요.\n"
+            "keywords는 강의 핵심 키워드를 최대 3개까지 넣고, 각 항목은 반드시 3단어 이하로 작성하세요."
         )
         try:
             response = self._gpt.chat.completions.create(
                 model=GPT_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": f"강의 텍스트\n{audio_text}"},
+                    {"role": "user", "content": f"강의 텍스트:\n{audio_text}"},
                 ],
                 temperature=0.3,
                 max_completion_tokens=300,
@@ -227,13 +228,52 @@ class FaceAnalyzer:
                 "keywords": [],
             }
 
+    def coaching(self, dashboard_data: dict) -> dict:
+        system_prompt = (
+            "당신은 수업 대시보드를 해석해 강사에게 즉시 실행 가능한 코칭을 제안하는 교육 코치입니다.\n"
+            "입력된 데이터만 근거로 판단하고, 과장하지 마세요.\n"
+            "반드시 아래 JSON 형식으로만 응답하세요.\n"
+            '{"summary":"한두 문장 진단","priorityLevel":"높음|보통|낮음","coachingTips":["팁 1","팁 2","팁 3"],'
+            '"reExplainTopics":["주제 1","주제 2","주제 3"],"studentSignals":["신호 해석 1","신호 해석 2"],'
+            '"recommendedActionNow":"지금 바로 할 행동 1문장","sampleMentions":["강사가 바로 말할 멘트 1","강사가 바로 말할 멘트 2"]}'
+        )
+        user_prompt = f"대시보드 데이터:\n{json.dumps(dashboard_data, ensure_ascii=False, indent=2)}"
+
+        try:
+            response = self._gpt.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.3,
+                max_completion_tokens=500,
+            )
+            raw = response.choices[0].message.content.strip()
+            parsed = json.loads(raw)
+            return {
+                "summary": self._normalize_single_line(parsed.get("summary", "")),
+                "priorityLevel": self._normalize_priority(parsed.get("priorityLevel", "보통")),
+                "coachingTips": self._normalize_list(parsed.get("coachingTips", []), 3),
+                "reExplainTopics": self._normalize_list(parsed.get("reExplainTopics", []), 3),
+                "studentSignals": self._normalize_list(parsed.get("studentSignals", []), 3),
+                "recommendedActionNow": self._normalize_single_line(parsed.get("recommendedActionNow", "")),
+                "sampleMentions": self._normalize_list(parsed.get("sampleMentions", []), 3),
+            }
+        except json.JSONDecodeError:
+            logger.error("Coaching GPT parse failed: %s", raw if "raw" in locals() else "")
+        except Exception as e:
+            logger.error("Coaching GPT call error: %s", e)
+
+        return self._fallback_coaching(dashboard_data)
+
     @staticmethod
     def _normalize_two_sentences(text: str) -> str:
         cleaned = " ".join((text or "").split())
         if not cleaned:
             return ""
 
-        parts = re.split(r"(?<=[.!?。！？])\s+", cleaned)
+        parts = re.split(r"(?<=[.!?])\s+", cleaned)
         sentences = [part.strip() for part in parts if part.strip()]
 
         if len(sentences) >= 2:
@@ -267,6 +307,32 @@ class FaceAnalyzer:
                 break
 
         return keywords
+
+    @staticmethod
+    def _normalize_single_line(text: str) -> str:
+        return " ".join((text or "").split()).strip()
+
+    @staticmethod
+    def _normalize_priority(value: str) -> str:
+        normalized = " ".join((value or "").split()).strip()
+        return normalized if normalized in {"높음", "보통", "낮음"} else "보통"
+
+    @staticmethod
+    def _normalize_list(items, limit: int) -> list[str]:
+        if not isinstance(items, list):
+            return []
+
+        normalized: list[str] = []
+        for item in items:
+            if not isinstance(item, str):
+                continue
+            cleaned = " ".join(item.split()).strip()
+            if not cleaned or cleaned in normalized:
+                continue
+            normalized.append(cleaned)
+            if len(normalized) >= limit:
+                break
+        return normalized
 
     def _decode_image(self, image_bytes: bytes):
         arr = np.frombuffer(image_bytes, dtype=np.uint8)
@@ -313,4 +379,32 @@ class FaceAnalyzer:
             "signal_subtype": "FACE_MISSING",
             "signal_label": "시선 이탈 / 화면 이탈",
             "face_features": {"face_detected": False},
+        }
+
+    @staticmethod
+    def _fallback_coaching(dashboard_data: dict) -> dict:
+        topics = dashboard_data.get("topTopics", []) if isinstance(dashboard_data, dict) else []
+        keywords = dashboard_data.get("topKeywords", []) if isinstance(dashboard_data, dict) else []
+        signal_items = dashboard_data.get("signalBreakdown", []) if isinstance(dashboard_data, dict) else []
+        signals = [item.get("label", "") for item in signal_items if isinstance(item, dict) and item.get("label")]
+
+        focus_topics = [item for item in (topics + keywords) if isinstance(item, str) and item.strip()][:3]
+        if not focus_topics:
+            focus_topics = ["핵심 개념"]
+
+        return {
+            "summary": "현재 대시보드 기준으로 학생 이해도 저하 신호가 반복되고 있어, 핵심 개념을 짧게 다시 정리하는 보충 설명이 필요합니다.",
+            "priorityLevel": "보통",
+            "coachingTips": [
+                "최근 알림이 집중된 개념부터 1분 안에 다시 설명해 주세요.",
+                "학생 반응이 큰 반부터 확인 질문을 던져 이해도를 다시 점검해 주세요.",
+                "예시 하나와 핵심 정의 하나를 함께 제시해 부담을 낮춰 주세요.",
+            ],
+            "reExplainTopics": focus_topics,
+            "studentSignals": signals[:3] or ["표정과 반응 데이터를 함께 보며 보충 설명 우선순위를 잡아 주세요."],
+            "recommendedActionNow": f"지금은 '{focus_topics[0]}'부터 짧게 다시 설명하고 바로 이해 확인 질문을 해보세요.",
+            "sampleMentions": [
+                f"방금 나온 '{focus_topics[0]}'를 다시 아주 짧게 정리해볼게요.",
+                "지금 설명한 내용 중 어디까지 이해됐는지 한 번 같이 확인해볼게요.",
+            ],
         }

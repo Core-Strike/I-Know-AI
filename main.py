@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI, File, HTTPException, Path, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from analyzer import FaceAnalyzer
-from models import AnalyzeResponse, ErrorResponse, SummarizeRequest, SummarizeResponse
+from models import AnalyzeResponse, CoachingRequest, CoachingResponse, ErrorResponse, SummarizeRequest, SummarizeResponse
 
 load_dotenv()
 
@@ -93,6 +93,27 @@ async def analyze(
         signal_subtype=result["signal_subtype"],
         signal_label=result["signal_label"],
         face_features=result["face_features"],
+    )
+
+
+@router.post(
+    "/coaching",
+    response_model=CoachingResponse,
+    responses={400: {"model": ErrorResponse}},
+    summary="Generate AI coaching guidance from dashboard data",
+)
+async def coaching(body: CoachingRequest):
+    result = analyzer.coaching(body.model_dump())
+    logger.info("coaching date=%s curriculum=%s classId=%s", body.date, body.curriculum, body.classId)
+
+    return CoachingResponse(
+        summary=result["summary"],
+        priorityLevel=result["priorityLevel"],
+        coachingTips=result.get("coachingTips", []),
+        reExplainTopics=result.get("reExplainTopics", []),
+        studentSignals=result.get("studentSignals", []),
+        recommendedActionNow=result["recommendedActionNow"],
+        sampleMentions=result.get("sampleMentions", []),
     )
 
 
