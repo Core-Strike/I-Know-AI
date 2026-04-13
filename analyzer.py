@@ -176,11 +176,11 @@ class FaceAnalyzer:
             gpt_reason = parsed.get("reason", "")
         except json.JSONDecodeError:
             logger.error("GPT response parse failed: %s", raw)
-            gpt_reason = "GPT 응답 파싱 실패"
+            gpt_reason = "AI 분석 실패"
             confusion_confidence = 0.0
         except (TypeError, ValueError):
             logger.error("GPT confidence parse failed: %s", raw if "raw" in locals() else "")
-            gpt_reason = "GPT confidence 파싱 실패"
+            gpt_reason = "AI 분석 실패"
             confusion_confidence = 0.0
         except Exception as e:
             logger.error("GPT call error: %s", e)
@@ -207,10 +207,10 @@ class FaceAnalyzer:
             "아래 입력은 교육생이 혼란을 느낀 직후 녹음된 강의 전사입니다.\n"
             "반드시 아래 JSON 형식으로만 응답하세요.\n"
             '{"summary": "반드시 2문장 요약", "recommendedConcept": "교육생에게 추가로 설명하면 좋을 개념 한 줄", '
-            '"keywords": ["3단어 이하 키워드", "3단어 이하 키워드", "3단어 이하 키워드"]}\n'
+            '"keywords": ["3단어 이하 키워드", "3단어 이하 키워드", "3단어 이하 키워드", "3단어 이하 키워드", "3단어 이하 키워드"]}\n'
             "summary는 반드시 한국어 2문장으로만 작성하세요.\n"
             "recommendedConcept는 교육생이 헷갈렸을 가능성이 높은 개념이나 보충 설명 포인트 한 줄로 작성하세요.\n"
-            "keywords는 강의 핵심 키워드를 최대 3개까지 넣고, 각 항목은 반드시 3단어 이하로 작성하세요."
+            "keywords는 강의 핵심 키워드를 최대 5개까지 넣고, 각 항목은 반드시 3단어 이하로 작성하세요."
         )
         try:
             response = self._gpt.chat.completions.create(
@@ -319,7 +319,7 @@ class FaceAnalyzer:
             if cleaned not in keywords:
                 keywords.append(cleaned)
 
-            if len(keywords) >= 3:
+            if len(keywords) >= 5:
                 break
 
         return keywords

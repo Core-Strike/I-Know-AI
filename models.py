@@ -62,7 +62,7 @@ class SummarizeResponse(BaseModel):
     )
     keywords: list[str] = Field(
         default_factory=list,
-        description="Up to three concise keywords extracted from the lecture",
+        description="Up to five concise keywords extracted from the lecture",
     )
 
 
