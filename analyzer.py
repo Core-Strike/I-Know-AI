@@ -33,10 +33,13 @@ MODEL_URL = (
 GPT_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 GPT_SYSTEM_PROMPT = """\
 당신은 교육 현장에서 교육생의 표정 데이터를 분석해 이해 여부를 판단하는 전문가입니다.
-아래 얼굴 표정 지표를 보고, 이 교육생이 현재 강의 내용을 이해하지 못해 혼란스러워하는지 종합적으로 판단하세요.
+아래 얼굴 표정 지표를 보고, 이 교육생이 현재 강의 내용을 이해하지 못했는지 종합적으로 판단하세요.
+
+`confused`는 이해하지 못한 상태 여부를 뜻합니다.
+`confidence`는 감정 confidence가 아니라, 이해하지 못한 정도를 0부터 1 사이 값으로 나타냅니다.
 
 반드시 아래 JSON 형식으로만 응답하세요.
-{"confused": true, "reason": "한 문장 이유"}
+{"confused": true, "confidence": 0.82, "reason": "학생이 현재 내용을 이해하지 못한 것으로 보입니다."}
 """
 
 LEFT_BROW_TOP = [70, 63, 105, 66, 107]
@@ -147,8 +150,13 @@ class FaceAnalyzer:
         return float(abs(math.degrees(math.atan2(right_cy - left_cy, right_cx - left_cx + 1e-6))))
 
     def _gpt_judge(self, features: dict) -> dict:
-        user_content = f"얼굴 표정 지표:\n{json.dumps(features, ensure_ascii=False, indent=2)}"
-        confused, gpt_reason = False, ""
+        user_content = (
+            "얼굴 표정 지표를 보고 학생이 현재 수업 내용을 이해하지 못했는지 판단하세요.\n"
+            "`confused`는 이해하지 못한 상태 여부입니다.\n"
+            "`confidence`는 감정 점수가 아니라 이해하지 못한 정도를 0부터 1 사이 값으로 나타낸 것입니다.\n"
+            f"얼굴 표정 지표:\n{json.dumps(features, ensure_ascii=False, indent=2)}"
+        )
+        confused, gpt_reason, confusion_confidence = False, "", 0.0
 
         try:
             response = self._gpt.chat.completions.create(
@@ -163,20 +171,28 @@ class FaceAnalyzer:
             raw = response.choices[0].message.content.strip()
             parsed = json.loads(raw)
             confused = bool(parsed.get("confused", False))
+            confusion_confidence = float(parsed.get("confidence", 0.0))
+            confusion_confidence = max(0.0, min(1.0, confusion_confidence))
             gpt_reason = parsed.get("reason", "")
         except json.JSONDecodeError:
             logger.error("GPT response parse failed: %s", raw)
             gpt_reason = "GPT 응답 파싱 실패"
+            confusion_confidence = 0.0
+        except (TypeError, ValueError):
+            logger.error("GPT confidence parse failed: %s", raw if "raw" in locals() else "")
+            gpt_reason = "GPT confidence 파싱 실패"
+            confusion_confidence = 0.0
         except Exception as e:
             logger.error("GPT call error: %s", e)
             gpt_reason = f"GPT 호출 오류: {e}"
+            confusion_confidence = 0.0
 
-        logger.info("confused=%s | reason=%s", confused, gpt_reason)
+        logger.info("confused=%s | confidence=%.3f | reason=%s", confused, confusion_confidence, gpt_reason)
         signal_type, signal_subtype, signal_label = self._classify_signal(features, confused)
 
         return {
             "confused": confused,
-            "confidence": features["confidence"],
+            "confidence": confusion_confidence,
             "emotion": features["top_emotion"],
             "gpt_reason": gpt_reason,
             "signal_type": signal_type,
