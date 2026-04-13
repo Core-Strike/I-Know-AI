@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 940">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f8f3e8"/>
+      <stop offset="100%" stop-color="#edf2f7"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#4a5568"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; fill: #1f2933; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 14px; fill: #52606d; }
+      .node-title { font-size: 18px; font-weight: 700; }
+      .body { font-size: 14px; fill: #334e68; }
+      .small { font-size: 13px; fill: #486581; }
+      .yes { font-size: 13px; font-weight: 700; fill: #c53030; }
+      .no { font-size: 13px; font-weight: 700; fill: #2f855a; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="940" rx="28" fill="url(#bg)"/>
+  <text x="640" y="54" text-anchor="middle" class="title">Signal Classification Decision Tree</text>
+  <text x="640" y="82" text-anchor="middle" class="subtitle">`_classify_signal(features, confused)` 기준의 실제 분기 구조</text>
+
+  <rect x="500" y="120" width="280" height="84" rx="22" fill="#fff4d6" stroke="#d69e2e" stroke-width="3"/>
+  <text x="640" y="156" text-anchor="middle" class="node-title">GPT confused?</text>
+  <text x="640" y="182" text-anchor="middle" class="body">true / false</text>
+
+  <line x1="500" y1="162" x2="220" y2="280" stroke="#2f855a" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="342" y="206" class="no">false</text>
+
+  <rect x="70" y="280" width="320" height="104" rx="24" fill="#e6f4ea" stroke="#2f855a" stroke-width="3"/>
+  <text x="230" y="322" text-anchor="middle" class="node-title">FACIAL_INSTABILITY</text>
+  <text x="230" y="350" text-anchor="middle" class="body">LOW_SIGNAL</text>
+  <text x="230" y="376" text-anchor="middle" class="small">confused가 false면 여기서 종료</text>
+
+  <line x1="780" y1="162" x2="1020" y2="260" stroke="#c53030" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="892" y="202" class="yes">true</text>
+
+  <rect x="885" y="260" width="280" height="84" rx="22" fill="#fff4d6" stroke="#d69e2e" stroke-width="3"/>
+  <text x="1025" y="296" text-anchor="middle" class="node-title">Face detected?</text>
+  <text x="1025" y="322" text-anchor="middle" class="body">features.face_detected</text>
+
+  <line x1="955" y1="344" x2="755" y2="450" stroke="#c53030" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="850" y="394" class="yes">no</text>
+
+  <rect x="575" y="450" width="320" height="104" rx="24" fill="#fde8e8" stroke="#c53030" stroke-width="3"/>
+  <text x="735" y="492" text-anchor="middle" class="node-title">GAZE_AWAY</text>
+  <text x="735" y="520" text-anchor="middle" class="body">FACE_MISSING</text>
+  <text x="735" y="546" text-anchor="middle" class="small">얼굴 자체가 잡히지 않으면 시선 이탈로 간주</text>
+
+  <line x1="1115" y1="344" x2="1135" y2="430" stroke="#2f855a" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="1148" y="392" class="no">yes</text>
+
+  <rect x="980" y="430" width="310" height="84" rx="22" fill="#fff4d6" stroke="#d69e2e" stroke-width="3"/>
+  <text x="1135" y="466" text-anchor="middle" class="node-title">Head tilt ≥ 20° ?</text>
+  <text x="1135" y="492" text-anchor="middle" class="body">abs(head_tilt_deg) >= 20</text>
+
+  <line x1="1040" y1="514" x2="935" y2="620" stroke="#c53030" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="978" y="566" class="yes">yes</text>
+
+  <rect x="770" y="620" width="320" height="104" rx="24" fill="#fde8e8" stroke="#c53030" stroke-width="3"/>
+  <text x="930" y="662" text-anchor="middle" class="node-title">GAZE_AWAY</text>
+  <text x="930" y="690" text-anchor="middle" class="body">HEAD_TURNED</text>
+  <text x="930" y="716" text-anchor="middle" class="small">고개 회전이 크면 시선 이탈로 처리</text>
+
+  <line x1="1200" y1="514" x2="1200" y2="620" stroke="#2f855a" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="1214" y="566" class="no">no</text>
+
+  <rect x="1045" y="620" width="220" height="84" rx="22" fill="#fff4d6" stroke="#d69e2e" stroke-width="3"/>
+  <text x="1155" y="656" text-anchor="middle" class="node-title">EAR &lt; 0.18 ?</text>
+  <text x="1155" y="682" text-anchor="middle" class="body">눈 감김 추정</text>
+
+  <line x1="1090" y1="704" x2="980" y2="812" stroke="#c53030" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="1032" y="758" class="yes">yes</text>
+
+  <rect x="815" y="812" width="320" height="104" rx="24" fill="#fde8e8" stroke="#c53030" stroke-width="3"/>
+  <text x="975" y="854" text-anchor="middle" class="node-title">GAZE_AWAY</text>
+  <text x="975" y="882" text-anchor="middle" class="body">EYES_CLOSED</text>
+  <text x="975" y="908" text-anchor="middle" class="small">눈이 감긴 상태로 추정되면 시선 이탈로 처리</text>
+
+  <line x1="1205" y1="704" x2="1205" y2="760" stroke="#2f855a" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="1218" y="736" class="no">no</text>
+
+  <rect x="70" y="470" width="430" height="360" rx="26" fill="#e6ecff" stroke="#4c51bf" stroke-width="3"/>
+  <text x="285" y="514" text-anchor="middle" class="node-title">Emotion Mapping</text>
+  <text x="285" y="542" text-anchor="middle" class="body">위 조건에 걸리지 않으면 top_emotion으로 subtype 결정</text>
+
+  <line x1="140" y1="580" x2="430" y2="580" stroke="#a3bffa" stroke-width="2"/>
+  <text x="150" y="612" class="small">fear → FEAR_DOMINANT</text>
+  <text x="150" y="646" class="small">sad → SAD_DOMINANT</text>
+  <text x="150" y="680" class="small">surprise → SURPRISE_DOMINANT</text>
+  <text x="150" y="714" class="small">angry → ANGRY_TENSION</text>
+  <text x="150" y="748" class="small">disgust → DISGUST_TENSION</text>
+  <text x="150" y="782" class="small">그 외 → CONFUSED_PATTERN</text>
+
+  <rect x="140" y="602" width="250" height="210" rx="18" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="265" y="632" text-anchor="middle" class="body">공통 signalType</text>
+  <text x="265" y="664" text-anchor="middle" class="node-title">FACIAL_INSTABILITY</text>
+  <text x="265" y="702" text-anchor="middle" class="body">공통 signalLabel</text>
+  <text x="265" y="734" text-anchor="middle" class="node-title">표정 기반 불안정</text>
+  <text x="265" y="772" text-anchor="middle" class="small">감정 우세 유형만 달라짐</text>
+
+  <path d="M1205,760 L1205,790 L500,790" fill="none" stroke="#4c51bf" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="870" y="774" class="body">emotion branch</text>
+
+  <rect x="70" y="844" width="680" height="58" rx="18" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="96" y="879" class="body">정리: 시선/얼굴 상태가 먼저 우선순위를 갖고, 그 외 케이스에서 감정 기반 subtype 분류가 적용됩니다.</text>
+</svg>

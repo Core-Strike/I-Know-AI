@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f7f3ea"/>
+      <stop offset="100%" stop-color="#eef6ff"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#355070"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; fill: #1f2933; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 14px; fill: #52606d; }
+      .box-title { font-size: 20px; font-weight: 700; }
+      .body { font-size: 14px; fill: #334e68; }
+      .small { font-size: 13px; fill: #486581; }
+      .label { font-size: 13px; font-weight: 700; fill: #274c77; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="760" rx="28" fill="url(#bg)"/>
+  <text x="640" y="58" text-anchor="middle" class="title">Docker / CI-CD Flow</text>
+  <text x="640" y="86" text-anchor="middle" class="subtitle">현재 저장소의 Dockerfile, Dockerfile.base, docker-compose.yml 기준</text>
+
+  <rect x="70" y="230" width="180" height="130" rx="24" fill="#e6f4ea" stroke="#2f855a" stroke-width="3"/>
+  <text x="160" y="274" text-anchor="middle" class="box-title">Source</text>
+  <text x="160" y="304" text-anchor="middle" class="body">코드 변경</text>
+  <text x="160" y="330" text-anchor="middle" class="small">requirements.txt 포함</text>
+
+  <rect x="320" y="210" width="220" height="170" rx="24" fill="#fff4d6" stroke="#d69e2e" stroke-width="3"/>
+  <text x="430" y="254" text-anchor="middle" class="box-title">Base Image Build</text>
+  <text x="430" y="284" text-anchor="middle" class="body">Dockerfile.base</text>
+  <text x="430" y="310" text-anchor="middle" class="body">Python 3.11 slim</text>
+  <text x="430" y="336" text-anchor="middle" class="body">OS 패키지 + ML 의존성 설치</text>
+  <text x="430" y="362" text-anchor="middle" class="small">산출물: confusion-api-base:latest</text>
+
+  <rect x="610" y="230" width="220" height="130" rx="24" fill="#deebf7" stroke="#2b6cb0" stroke-width="3"/>
+  <text x="720" y="274" text-anchor="middle" class="box-title">App Image Build</text>
+  <text x="720" y="304" text-anchor="middle" class="body">Dockerfile</text>
+  <text x="720" y="330" text-anchor="middle" class="small">FROM confusion-api-base:latest</text>
+
+  <rect x="900" y="210" width="290" height="170" rx="24" fill="#efe3fb" stroke="#6b46c1" stroke-width="3"/>
+  <text x="1045" y="254" text-anchor="middle" class="box-title">Runtime Deployment</text>
+  <text x="1045" y="284" text-anchor="middle" class="body">docker compose up --build -d</text>
+  <text x="1045" y="310" text-anchor="middle" class="body">container: confusion-api</text>
+  <text x="1045" y="336" text-anchor="middle" class="body">port: 8000:8000</text>
+  <text x="1045" y="362" text-anchor="middle" class="small">env_file=.env, restart=always</text>
+
+  <line x1="250" y1="295" x2="320" y2="295" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="284" y="276" text-anchor="middle" class="label">build-base.sh</text>
+
+  <line x1="540" y1="295" x2="610" y2="295" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="575" y="276" text-anchor="middle" class="label">base image 사용</text>
+
+  <line x1="830" y1="295" x2="900" y2="295" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="865" y="276" text-anchor="middle" class="label">compose 실행</text>
+
+  <rect x="110" y="470" width="310" height="180" rx="24" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="265" y="514" text-anchor="middle" class="box-title">왜 base 이미지를 따로 두나?</text>
+  <text x="265" y="548" text-anchor="middle" class="body">TensorFlow, MediaPipe, OpenCV 같은</text>
+  <text x="265" y="574" text-anchor="middle" class="body">무거운 의존성을 매번 다시 설치하지 않기 위해</text>
+  <text x="265" y="600" text-anchor="middle" class="body">빌드 캐시를 분리합니다.</text>
+  <text x="265" y="630" text-anchor="middle" class="small">requirements.txt가 바뀌지 않으면 재사용 효과가 큼</text>
+
+  <rect x="485" y="470" width="310" height="180" rx="24" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="640" y="514" text-anchor="middle" class="box-title">운영 시 주의점</text>
+  <text x="640" y="548" text-anchor="middle" class="body">1. `.env`에 OPENAI_API_KEY 필요</text>
+  <text x="640" y="574" text-anchor="middle" class="body">2. base 이미지가 없으면 app 빌드 실패</text>
+  <text x="640" y="600" text-anchor="middle" class="body">3. 첫 실행 시 MediaPipe 모델 다운로드 가능</text>
+  <text x="640" y="630" text-anchor="middle" class="small">Windows에서는 build-base.sh 대신 Git Bash/WSL 권장</text>
+
+  <rect x="860" y="470" width="330" height="180" rx="24" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="1025" y="514" text-anchor="middle" class="box-title">CI에 붙인다면</text>
+  <text x="1025" y="548" text-anchor="middle" class="body">1. 저장소 checkout</text>
+  <text x="1025" y="574" text-anchor="middle" class="body">2. 필요 시 base 이미지 재빌드</text>
+  <text x="1025" y="600" text-anchor="middle" class="body">3. docker compose down</text>
+  <text x="1025" y="626" text-anchor="middle" class="body">4. docker compose up -d --build</text>
+
+  <rect x="80" y="120" width="1110" height="58" rx="18" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="110" y="156" class="body">이 다이어그램은 저장소에 실제 존재하는 `Dockerfile.base`, `Dockerfile`, `docker-compose.yml`, `build-base.sh`의 역할을 문서화한 것입니다.</text>
+</svg>

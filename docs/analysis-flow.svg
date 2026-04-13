@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 980">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f9f6ef"/>
+      <stop offset="100%" stop-color="#edf5ff"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#355070"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; fill: #1f2933; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 14px; fill: #52606d; }
+      .step-title { font-size: 19px; font-weight: 700; }
+      .body { font-size: 14px; fill: #334e68; }
+      .small { font-size: 13px; fill: #486581; }
+      .chip { font-size: 12px; font-weight: 700; fill: #274c77; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="980" rx="28" fill="url(#bg)"/>
+  <text x="600" y="54" text-anchor="middle" class="title">POST /ai-api/analyze/{student_id} Flow</text>
+  <text x="600" y="82" text-anchor="middle" class="subtitle">현재 코드가 실제로 수행하는 분석 파이프라인</text>
+
+  <rect x="390" y="120" width="420" height="92" rx="24" fill="#e6f4ea" stroke="#2f855a" stroke-width="3"/>
+  <text x="600" y="158" text-anchor="middle" class="step-title">1. 파일 수신 및 기본 검증</text>
+  <text x="600" y="184" text-anchor="middle" class="body">UploadFile content_type 확인, 빈 파일 차단, 10MB 초과 차단</text>
+
+  <line x1="600" y1="212" x2="600" y2="248" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="390" y="250" width="420" height="80" rx="24" fill="#fff4d6" stroke="#d69e2e" stroke-width="3"/>
+  <text x="600" y="286" text-anchor="middle" class="step-title">2. 이미지 디코딩</text>
+  <text x="600" y="310" text-anchor="middle" class="body">numpy buffer → cv2.imdecode → BGR 이미지 배열</text>
+
+  <line x1="600" y1="330" x2="600" y2="366" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="90" y="370" width="450" height="224" rx="26" fill="#deebf7" stroke="#2b6cb0" stroke-width="3"/>
+  <text x="315" y="412" text-anchor="middle" class="step-title">3-A. FER 감정 분석</text>
+  <text x="315" y="442" text-anchor="middle" class="body">detect_emotions(rgb) 실행</text>
+  <text x="315" y="468" text-anchor="middle" class="body">가장 큰 얼굴 1개 선택</text>
+  <text x="315" y="494" text-anchor="middle" class="body">`emotions`, `top_emotion`, `confidence` 계산</text>
+  <text x="315" y="532" text-anchor="middle" class="chip">angry / disgust / fear / happy / sad / surprise / neutral</text>
+  <text x="315" y="566" text-anchor="middle" class="small">예외가 나면 로그만 남기고 다음 단계 계속 진행</text>
+
+  <rect x="660" y="370" width="450" height="224" rx="26" fill="#efe3fb" stroke="#6b46c1" stroke-width="3"/>
+  <text x="885" y="412" text-anchor="middle" class="step-title">3-B. MediaPipe 랜드마크 분석</text>
+  <text x="885" y="442" text-anchor="middle" class="body">face_landmarker.task 로드 후 1개 얼굴 탐지</text>
+  <text x="885" y="468" text-anchor="middle" class="body">`brow_eye_ratio`, `ear`, `head_tilt_deg` 계산</text>
+  <text x="885" y="494" text-anchor="middle" class="body">landmark 좌표로 눈썹-눈 거리, 눈 개폐 정도, 고개 각도 추정</text>
+  <text x="885" y="532" text-anchor="middle" class="chip">Face detected 여부도 함께 갱신</text>
+  <text x="885" y="566" text-anchor="middle" class="small">모델 파일이 없으면 앱 시작 시 자동 다운로드</text>
+
+  <path d="M315,594 L315,640 L600,640 L600,676" fill="none" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M885,594 L885,640 L600,640 L600,676" fill="none" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="335" y="680" width="530" height="118" rx="26" fill="#fff2df" stroke="#dd6b20" stroke-width="3"/>
+  <text x="600" y="722" text-anchor="middle" class="step-title">4. GPT에 특징값 전달</text>
+  <text x="600" y="750" text-anchor="middle" class="body">features dict 전체를 JSON 문자열로 만들어 Chat Completions 호출</text>
+  <text x="600" y="776" text-anchor="middle" class="body">기대 응답: {"confused": bool, "reason": "..."}</text>
+
+  <line x1="600" y1="798" x2="600" y2="834" stroke="#355070" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <rect x="335" y="838" width="530" height="86" rx="26" fill="#e3fcec" stroke="#2f855a" stroke-width="3"/>
+  <text x="600" y="876" text-anchor="middle" class="step-title">5. 신호 분류 및 응답 생성</text>
+  <text x="600" y="904" text-anchor="middle" class="body">_classify_signal(features, confused) + AnalyzeResponse 직렬화</text>
+
+  <rect x="80" y="690" width="210" height="152" rx="22" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="185" y="726" text-anchor="middle" class="chip">features 핵심 필드</text>
+  <text x="185" y="754" text-anchor="middle" class="small">face_detected</text>
+  <text x="185" y="778" text-anchor="middle" class="small">emotions</text>
+  <text x="185" y="802" text-anchor="middle" class="small">top_emotion / confidence</text>
+  <text x="185" y="826" text-anchor="middle" class="small">brow_eye_ratio / ear / head_tilt_deg</text>
+
+  <rect x="910" y="690" width="220" height="194" rx="22" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="1020" y="726" text-anchor="middle" class="chip">최종 응답 필드</text>
+  <text x="1020" y="754" text-anchor="middle" class="small">studentId</text>
+  <text x="1020" y="778" text-anchor="middle" class="small">confused / confidence / emotion</text>
+  <text x="1020" y="802" text-anchor="middle" class="small">gptReason</text>
+  <text x="1020" y="826" text-anchor="middle" class="small">signalType / signalSubtype / signalLabel</text>
+  <text x="1020" y="850" text-anchor="middle" class="small">faceFeatures</text>
+
+  <rect x="60" y="890" width="1080" height="58" rx="18" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="88" y="926" class="body">참고: FER나 MediaPipe 단계에서 예외가 나더라도 가능하면 분석을 계속 진행하도록 작성되어 있으며, GPT 파싱 실패 시에도 reason을 담아 fallback 처리합니다.</text>
+</svg>

@@ -1,279 +1,595 @@
-# Confusion Detection API
-> 교육생 혼란 감지 FastAPI 서비스
+# Confusion Detection FastAPI
 
----
+학생 얼굴 프레임과 수업 텍스트를 바탕으로 이해도 저하 신호를 분석하고, 강사용 코칭/요약 데이터를 생성하는 FastAPI 서비스입니다. 현재 구현의 중심은 `FER + MediaPipe + OpenAI` 조합이며, API 엔드포인트는 모두 [`main.py`](./main.py), 핵심 분석 로직은 [`analyzer.py`](./analyzer.py), 스키마는 [`models.py`](./models.py)에 모여 있습니다.
 
-## 1. 프로젝트 개요
-
-교육 현장에서 교육생 웹캠 영상을 10초마다 캡처해 얼굴 표정을 분석하고, 혼란(Confusion) 여부를 실시간으로 판정하는 FastAPI 기반 마이크로서비스입니다.
-
-FER과 MediaPipe로 원시 표정 데이터를 추출한 뒤, OpenAI GPT 모델이 각 지표의 의미를 종합하여 이해도를 최종 판정합니다.
+## 한눈에 보기
 
 | 항목 | 내용 |
-|------|------|
-| 언어 | Python 3.11 |
-| 프레임워크 | FastAPI 0.111 / Uvicorn 0.29 |
-| 표정 분석 | FER 22.5.1 + TensorFlow 2.20 |
-| 랜드마크 | MediaPipe 0.10.33 (Face Landmarker Tasks API) |
-| AI 판정 | OpenAI GPT — 기본 모델 `gpt-5.4-mini` (`OPENAI_MODEL`로 변경 가능) |
-| 컨테이너 | Docker / Docker Compose |
+| --- | --- |
+| 런타임 | Python 3.11 |
+| 웹 프레임워크 | FastAPI 0.111.0 + Uvicorn 0.29.0 |
+| 라우트 prefix | `/ai-api` |
+| 주요 기능 | 얼굴 프레임 분석, 대시보드 코칭 생성, 수업 텍스트 요약, 헬스체크 |
+| 얼굴 감정 분석 | `fer==22.5.1` |
+| 얼굴 랜드마크 | `mediapipe==0.10.33` |
+| GPT 연동 | OpenAI Chat Completions |
+| 기본 모델 | `gpt-5.4-mini` (`OPENAI_MODEL`로 변경 가능) |
+| 컨테이너 포트 | `8000` |
 
----
+## 시스템 구조도
 
-## 2. 전체 시스템 아키텍처
+![Architecture](./docs/architecture.svg)
 
-이 서비스는 전체 시스템의 분석 레이어입니다.
+이 서비스는 독립적인 분석 API 역할을 수행합니다.
 
-```
-[교육생 브라우저]
-  웹캠 → 10초마다 프레임 캡처
-  → REST POST /analyze/{studentId}   ← 이 서비스로 전송
-  ← { confused: true/false } 수신
-  → 연속 3회(30초) confused=true 이면 Spring으로 이벤트 전송
+- 학생 클라이언트는 캡처 이미지 1장을 `POST /ai-api/analyze/{student_id}`로 전송합니다.
+- FastAPI는 OpenCV로 이미지를 디코딩하고, FER와 MediaPipe에서 특징값을 추출합니다.
+- 추출된 특징은 OpenAI 모델에 전달되어 `confused` 여부와 이유를 JSON으로 받습니다.
+- 최종적으로 FastAPI가 신호 분류(`signal_type`, `signal_subtype`, `signal_label`)까지 붙여 응답합니다.
+- 별도로 백엔드(Spring 등)는 대시보드 집계 데이터를 `POST /ai-api/coaching`, STT 텍스트를 `POST /ai-api/summarize`로 보내 강사용 결과를 생성할 수 있습니다.
 
-[FastAPI]  ← 이 서비스
-  이미지 수신
-  → FER      : 7가지 감정 확률 추출
-  → MediaPipe: 눈썹비율 / 눈개폐율 / 고개기울기 추출
-  → GPT      : 원시 데이터 전달 → confused true/false 판정
-  ← 응답 반환
+## 분석 파이프라인
 
-[Spring]
-  교육생 이벤트 수신 { studentId, capturedAt }
-  → 최근 30초 기준 과반수 판정
-  → 충족 시 Alert DB 저장
-  → WebSocket으로 강사 알림 전송
+![Analysis Flow](./docs/analysis-flow.svg)
 
-[강사 브라우저]
-  WebSocket 알림 수신 → 대시보드 표시
-  → 반별 알림 이력 / 어려워한 시점 타임라인 시각화
-```
+분석 흐름은 아래 순서로 진행됩니다.
 
----
+1. 업로드 파일 검증
+   - 허용 타입: `image/jpeg`, `image/png`, `image/webp`
+   - 빈 파일 금지
+   - 최대 크기: `10 MB`
+2. 이미지 디코딩
+   - `cv2.imdecode(..., cv2.IMREAD_COLOR)` 사용
+3. 특징 추출
+   - FER: 감정 분포, 최상위 감정, confidence
+   - MediaPipe: `brow_eye_ratio`, `ear`, `head_tilt_deg`
+4. GPT 판단
+   - 특징값 전체를 JSON 문자열로 전달
+   - 기대 응답 형식: `{"confused": bool, "reason": "..."}` 
+5. 규칙 기반 신호 분류
+   - GPT 결과와 특징값을 함께 사용
+6. 최종 응답 생성
+   - `AnalyzeResponse` 스키마로 직렬화
 
-## 3. 파일 구조
+## 신호 분류 규칙
 
-```
-fastapi/
-├── main.py                  # FastAPI 앱 진입점, 엔드포인트 정의
-├── analyzer.py              # 핵심 분석 로직 (FER + MediaPipe + GPT)
-├── models.py                # Pydantic 요청/응답 스키마
-├── requirements.txt         # Python 의존성 목록
-├── Dockerfile.base          # 무거운 의존성을 미리 설치하는 베이스 이미지 정의
-├── build-base.sh            # confusion-api-base 이미지 빌드 스크립트
-├── Dockerfile               # 컨테이너 이미지 빌드 설정
-├── docker-compose.yml       # 컨테이너 실행 설정
-├── .env                     # 환경변수 (git 제외)
-├── .env.example             # 환경변수 템플릿
-└── .gitignore               # .env, face_landmarker.task 등 제외
-```
+![Signal Classification](./docs/signal-classification.svg)
 
----
+`analyzer.py`의 `_classify_signal(features, confused)`는 아래 규칙을 사용합니다.
 
-## 4. 분석 흐름 상세 (analyzer.py)
+### 1. GPT가 confused가 아니라고 판단한 경우
 
-이미지 1장이 POST 요청으로 들어오면 아래 3단계를 순서대로 처리합니다.
+- `FACIAL_INSTABILITY / LOW_SIGNAL / 표정 기반 불안정`
 
-### STEP 1 — FER: 감정 확률 추출
+### 2. GPT가 confused라고 판단한 경우
 
-FER(Facial Expression Recognition)은 딥러닝 기반 표정 인식 라이브러리입니다. 정적 이미지 한 장에서 7가지 감정을 분류하며, 각 감정 점수의 합은 1.0입니다.
+- 얼굴 미검출: `GAZE_AWAY / FACE_MISSING / 시선 이탈 / 화면 이탈`
+- 고개 기울기 20도 이상: `GAZE_AWAY / HEAD_TURNED / 시선 이탈 / 화면 이탈`
+- EAR < 0.18: `GAZE_AWAY / EYES_CLOSED / 시선 이탈 / 화면 이탈`
+- 감정이 `fear`, `sad`, `surprise`, `angry`, `disgust` 중 하나면:
+  - `FACIAL_INSTABILITY / {감정별 subtype} / 표정 기반 불안정`
+- 그 외:
+  - `FACIAL_INSTABILITY / CONFUSED_PATTERN / 표정 기반 불안정`
 
-| 감정 | 의미 |
-|------|------|
-| `happy` | 밝고 편안한 표정 |
-| `neutral` | 무표정. 집중 또는 수동적으로 듣는 상태일 수 있음 |
-| `surprise` | 놀람. 예상치 못한 내용에 반응하는 것으로 혼란과 구분 필요 |
-| `fear` | 두려움 또는 당혹감. 내용이 어렵거나 압도될 때 나타날 수 있음 |
-| `sad` | 슬픔 또는 무기력감. 이해를 포기하거나 좌절하는 상태와 연관 |
-| `angry` | 짜증 또는 답답함. 이해가 안 될 때 발생하는 내적 저항 표현 |
-| `disgust` | 불쾌감. 내용이 맞지 않거나 거부감을 느낄 때 나타날 수 있음 |
+감정별 subtype 매핑은 다음과 같습니다.
 
-> **신뢰도 한계**: 조명·각도·해상도에 따라 정확도가 달라지며, `neutral`이 높다고 해서 반드시 이해한 상태는 아닙니다 (집중 또는 무관심일 수도 있음).
+| top_emotion | signal_subtype |
+| --- | --- |
+| `fear` | `FEAR_DOMINANT` |
+| `sad` | `SAD_DOMINANT` |
+| `surprise` | `SURPRISE_DOMINANT` |
+| `angry` | `ANGRY_TENSION` |
+| `disgust` | `DISGUST_TENSION` |
+| 기타 | `CONFUSED_PATTERN` |
 
-### STEP 2 — MediaPipe: 얼굴 랜드마크 지표 추출
+## API 개요
 
-Google MediaPipe Face Landmarker로 478개 얼굴 특징점 좌표를 추출하여 3가지 기하학적 수치를 계산합니다. 감정을 직접 감지하는 것이 아니라 얼굴의 형태적 변화를 수치화합니다.
+| Method | Path | 설명 |
+| --- | --- | --- |
+| `POST` | `/ai-api/analyze/{student_id}` | 학생 얼굴 프레임 분석 |
+| `POST` | `/ai-api/coaching` | 대시보드 집계 데이터를 바탕으로 코칭 생성 |
+| `POST` | `/ai-api/summarize` | 수업 텍스트 요약 |
+| `GET` | `/ai-api/health` | 헬스체크 |
 
-| 지표 | 의미 | 혼란 신호 해석 |
-|------|------|---------------|
-| `brow_eye_ratio` | 눈썹과 눈 사이의 수직 거리 비율 | 낮을수록 눈썹이 찡그려진 상태 |
-| `ear` | Eye Aspect Ratio (눈 세로/가로 비율) | 낮으면 졸음, 높으면 긴장 또는 놀람 |
-| `head_tilt_deg` | 고개 기울기 각도 (도 단위) | 클수록 의아하거나 생각 중인 상태 |
-| `face_detected` | 얼굴 감지 여부 (true/false) | false이면 자리 이탈 또는 카메라 이탈 |
+## API 상세
 
-> **신뢰도 한계**: 정면 얼굴 기준으로 설계되어 고개가 많이 돌아가거나 조명이 어두우면 정확도가 낮아질 수 있습니다.
+### 1. `POST /ai-api/analyze/{student_id}`
 
-### STEP 3 — GPT: 이해도 최종 판정
+학생 프레임 이미지 1장을 받아 이해도 저하 신호를 분석합니다.
 
-STEP 1~2에서 추출한 모든 원시 데이터를 GPT에 전달하여 혼란 여부를 종합 판단합니다. 임계값을 코드에 하드코딩하지 않고, GPT가 각 지표의 의미와 도구의 한계를 이해한 뒤 스스로 판단합니다.
+**Request**
 
-- 시스템 프롬프트: FER/MediaPipe 도구 설명, 각 지표 의미, 신뢰도 한계 포함
-- GPT 응답 형식: `{ "confused": true/false, "reason": "판단 이유 한 문장" }`
-- 기본 모델: `gpt-5.4-mini` — `.env`의 `OPENAI_MODEL`로 변경 가능
+- Path parameter: `student_id: str`
+- Content-Type: `multipart/form-data`
+- Form field: `file`
 
----
+**Validation**
 
-## 5. API 명세
+- 지원 확장 MIME: JPEG, PNG, WebP
+- 파일 크기 0 byte면 `400`
+- 파일이 10MB를 초과하면 `400`
 
-### POST `/analyze/{student_id}`
+**Response model**
 
-교육생 웹캠 캡처 이미지를 분석하여 혼란 여부를 반환합니다.
+- `studentId`
+- `confused`
+- `confidence`
+- `emotion`
+- `gptReason`
+- `signalType`
+- `signalSubtype`
+- `signalLabel`
+- `faceFeatures`
 
-| 항목 | 내용 |
-|------|------|
-| Method | POST |
-| Content-Type | multipart/form-data |
-| Path Param | `student_id` — 교육생 식별자 (Spring과 동일 ID 사용) |
-| Body | `file` — 이미지 파일 (JPEG / PNG / WebP, 최대 10MB) |
-
-**응답 예시 (200 OK)**
+**예시 응답**
 
 ```json
 {
-  "studentId":   "student_42",
-  "confused":    true,
-  "confidence":  0.712,
-  "emotion":     "fear",
-  "gpt_reason":  "fear 수치가 높고 눈썹이 찡그려진 상태로 혼란 신호가 명확합니다.",
-  "face_features": {
-    "face_detected":  true,
-    "emotions":       { "happy": 0.02, "neutral": 0.20, "fear": 0.41, "sad": 0.12, "angry": 0.10, "disgust": 0.08, "surprise": 0.07 },
-    "top_emotion":    "fear",
-    "confidence":     0.41,
-    "brow_eye_ratio": 0.038,
-    "ear":            0.261,
-    "head_tilt_deg":  3.1
+  "studentId": "student-42",
+  "confused": true,
+  "confidence": 0.712,
+  "emotion": "fear",
+  "gptReason": "눈 주변 긴장과 불안정한 표정이 관찰되어 내용을 따라가기 어려운 상태로 보입니다.",
+  "signalType": "FACIAL_INSTABILITY",
+  "signalSubtype": "FEAR_DOMINANT",
+  "signalLabel": "표정 기반 불안정",
+  "faceFeatures": {
+    "face_detected": true,
+    "emotions": {
+      "angry": 0.053,
+      "disgust": 0.071,
+      "fear": 0.712,
+      "happy": 0.011,
+      "sad": 0.084,
+      "surprise": 0.049,
+      "neutral": 0.02
+    },
+    "top_emotion": "fear",
+    "confidence": 0.712,
+    "brow_eye_ratio": 0.0382,
+    "ear": 0.2113,
+    "head_tilt_deg": 4.26
   }
 }
 ```
 
-### GET `/health`
-
-서버 상태 및 분석기 초기화 여부를 확인합니다.
-
-```json
-{ "status": "ok", "analyzer_ready": true }
-```
-
-### POST `/ai-api/summarize`
-
-혼란 이벤트 직후 수집한 강의 STT 텍스트를 GPT로 요약합니다.
-
-| 항목 | 내용 |
-|------|------|
-| Method | POST |
-| Content-Type | application/json |
-| Body | `alertId`(int), `sessionId`(string), `audioText`(string, 공백만 있으면 400) |
-
-**요청 예시**
+**오류 응답**
 
 ```json
 {
-  "alertId": 101,
-  "sessionId": "session-20260411-1",
-  "audioText": "방금 2분 동안 진행된 강의 STT 원문..."
+  "detail": "Unsupported content type: image/gif. Use JPEG, PNG, or WebP."
 }
 ```
 
-**응답 예시 (200 OK)**
+### 2. `POST /ai-api/coaching`
+
+프론트 또는 백엔드에서 집계한 대시보드 데이터를 받아, 수업 중 즉시 활용 가능한 코칭 결과를 생성합니다.
+
+**Request model**
+
+- `date: str`
+- `curriculum: str | None`
+- `classId: str | None`
+- `classIds: list[str]`
+- `participantCount: int`
+- `alertCount: int`
+- `avgConfusionPercent: int`
+- `topKeywords: list[str]`
+- `topTopics: list[str]`
+- `signalBreakdown: list[CoachingSignalItem]`
+- `recentAlerts: list[CoachingRecentAlertItem]`
+
+**예시 요청**
 
 ```json
 {
-  "alertId": 101,
-  "summary": "강사는 ... 부분을 설명했고, 교육생은 ... 지점에서 어려움을 느꼈을 가능성이 있습니다.",
-  "audioText": "방금 2분 동안 진행된 강의 STT 원문..."
+  "date": "2026-04-13",
+  "curriculum": "미적분",
+  "classId": "class-101",
+  "classIds": ["class-101"],
+  "participantCount": 28,
+  "alertCount": 6,
+  "avgConfusionPercent": 37,
+  "topKeywords": ["극한", "도함수", "접선"],
+  "topTopics": ["도함수 정의", "평균변화율"],
+  "signalBreakdown": [
+    {
+      "signalType": "FACIAL_INSTABILITY",
+      "label": "표정 기반 불안정",
+      "count": 4
+    },
+    {
+      "signalType": "GAZE_AWAY",
+      "label": "시선 이탈 / 화면 이탈",
+      "count": 2
+    }
+  ],
+  "recentAlerts": [
+    {
+      "classId": "class-101",
+      "capturedAt": "2026-04-13T10:15:00+09:00",
+      "topic": "도함수 정의",
+      "reason": "학생 이해도 저하 추정",
+      "confusionPercent": 43
+    }
+  ]
 }
 ```
 
----
+**Response model**
 
-## 6. 환경변수
+- `summary`
+- `priorityLevel`
+- `coachingTips`
+- `reExplainTopics`
+- `studentSignals`
+- `recommendedActionNow`
+- `sampleMentions`
 
-`.env.example`을 복사해 `.env`로 저장한 뒤 값을 입력합니다.
+**예시 응답**
 
-```bash
-cp .env.example .env
+```json
+{
+  "summary": "도함수 정의와 평균변화율 구간에서 학생 반응 저하가 반복되었습니다. 핵심 개념을 다시 연결해 설명하면 즉시 이해도를 끌어올릴 가능성이 있습니다.",
+  "priorityLevel": "보통",
+  "coachingTips": [
+    "도함수 정의를 그래프 해석과 함께 다시 설명하세요.",
+    "학생에게 평균변화율과 순간변화율 차이를 짧게 질문하세요."
+  ],
+  "reExplainTopics": ["도함수 정의", "평균변화율"],
+  "studentSignals": ["표정 기반 불안정 증가", "시선 이탈 비율 상승"],
+  "recommendedActionNow": "지금 바로 도함수 정의를 시각 예시와 함께 다시 정리해 주세요.",
+  "sampleMentions": [
+    "지금부터 도함수 정의를 그림으로 한 번 더 짚어볼게요.",
+    "평균변화율과 순간변화율 차이를 같이 확인해볼게요."
+  ]
+}
 ```
 
-| 변수 | 설명 |
-|------|------|
-| `OPENAI_API_KEY` | OpenAI API 키 (필수) — `sk-...` |
-| `OPENAI_MODEL` | GPT 모델명 (기본값: `gpt-5.4-mini`) |
+참고로 GPT 응답 파싱에 실패하면 `_fallback_coaching()`이 동작해 입력 데이터 기반의 기본 메시지를 생성합니다.
 
----
+### 3. `POST /ai-api/summarize`
 
-## 7. 설치 및 실행
+수업 텍스트를 요약하고, 추가 설명이 필요해 보이는 개념과 핵심 키워드를 생성합니다.
+
+**Request model**
+
+- `audioText: str`
+
+`audioText.strip()` 결과가 비어 있으면 `400`을 반환합니다.
+
+**예시 요청**
+
+```json
+{
+  "audioText": "도함수는 함수의 순간변화율을 나타냅니다. 평균변화율과 비교하면..."
+}
+```
+
+**Response model**
+
+- `summary`
+- `recommendedConcept`
+- `keywords`
+
+**예시 응답**
+
+```json
+{
+  "summary": "이번 설명은 도함수의 의미를 순간변화율 중심으로 정리했습니다. 평균변화율과의 차이를 이해하는 것이 다음 단계의 핵심입니다.",
+  "recommendedConcept": "평균변화율과 순간변화율의 연결",
+  "keywords": ["도함수", "순간변화율", "평균변화율"]
+}
+```
+
+요약 응답은 `_normalize_two_sentences()`와 `_normalize_keywords()`를 통해 후처리됩니다.
+
+### 4. `GET /ai-api/health`
+
+서버 생존 여부와 `FaceAnalyzer` 초기화 상태를 확인합니다.
+
+**예시 응답**
+
+```json
+{
+  "status": "ok",
+  "analyzer_ready": true
+}
+```
+
+## 스키마 관계도 (ERD 스타일)
+
+아래 ERD는 실제 DB 테이블이 아니라, API 요청/응답 객체 간 관계를 이해하기 위한 문서용 모델입니다.
+
+```mermaid
+erDiagram
+    ANALYZE_RESPONSE {
+        string studentId
+        boolean confused
+        float confidence
+        string emotion
+        string gptReason
+        string signalType
+        string signalSubtype
+        string signalLabel
+        json faceFeatures
+    }
+
+    SUMMARIZE_REQUEST {
+        string audioText
+    }
+
+    SUMMARIZE_RESPONSE {
+        string summary
+        string recommendedConcept
+        string_list keywords
+    }
+
+    COACHING_REQUEST {
+        string date
+        string curriculum
+        string classId
+        string_list classIds
+        int participantCount
+        int alertCount
+        int avgConfusionPercent
+        string_list topKeywords
+        string_list topTopics
+    }
+
+    COACHING_SIGNAL_ITEM {
+        string signalType
+        string label
+        int count
+    }
+
+    COACHING_RECENT_ALERT_ITEM {
+        string classId
+        string capturedAt
+        string topic
+        string reason
+        int confusionPercent
+    }
+
+    COACHING_RESPONSE {
+        string summary
+        string priorityLevel
+        string_list coachingTips
+        string_list reExplainTopics
+        string_list studentSignals
+        string recommendedActionNow
+        string_list sampleMentions
+    }
+
+    COACHING_REQUEST ||--o{ COACHING_SIGNAL_ITEM : contains
+    COACHING_REQUEST ||--o{ COACHING_RECENT_ALERT_ITEM : contains
+```
+
+## 코드 구조
+
+```text
+fastapi/
+├── main.py
+├── analyzer.py
+├── models.py
+├── requirements.txt
+├── Dockerfile
+├── Dockerfile.base
+├── docker-compose.yml
+├── build-base.sh
+└── docs/
+    ├── architecture.svg
+    ├── analysis-flow.svg
+    ├── signal-classification.svg
+    └── cicd-flow.svg
+```
+
+파일별 역할은 다음과 같습니다.
+
+### `main.py`
+
+- FastAPI 앱 생성
+- CORS 설정
+- `lifespan`에서 `FaceAnalyzer` 1회 초기화
+- API 라우팅과 입력 검증
+- Pydantic 응답 모델 변환
+
+### `analyzer.py`
+
+- 이미지 디코딩
+- FER 감정 분석
+- MediaPipe 랜드마크 기반 수치 추출
+- OpenAI를 통한 confusion 판단
+- 요약/코칭 GPT 호출
+- 신호 분류 및 fallback 처리
+
+### `models.py`
+
+- `AnalyzeResponse`
+- `SummarizeRequest`, `SummarizeResponse`
+- `CoachingRequest`, `CoachingResponse`
+- 하위 스키마(`CoachingSignalItem`, `CoachingRecentAlertItem`)
+- `ErrorResponse`
+
+## 런타임 동작 상세
+
+### 앱 시작 시
+
+`main.py`의 `lifespan()`에서 전역 `analyzer`를 초기화합니다.
+
+- `FaceAnalyzer()` 생성
+- FER 인스턴스 준비
+- MediaPipe 모델 파일 확인
+- `face_landmarker.task`가 없으면 자동 다운로드
+- OpenAI 클라이언트 생성
+
+즉, 첫 요청 시 lazy-loading 하는 방식이 아니라 앱 시작 시 분석기를 준비하는 구조입니다.
+
+### MediaPipe 모델 파일 저장 위치
+
+운영체제에 따라 `face_landmarker.task` 저장 경로가 달라집니다.
+
+- Windows: 사용자 홈 디렉터리 (`%USERPROFILE%\face_landmarker.task`)
+- 그 외: `fastapi/face_landmarker.task`
+
+이 동작은 `analyzer.py` 상단의 `MODEL_PATH` 분기에서 결정됩니다.
+
+### 추출되는 특징값
+
+`_extract_features()`가 반환하는 `features` 구조는 아래와 같습니다.
+
+| 키 | 타입 | 설명 |
+| --- | --- | --- |
+| `face_detected` | `bool` | FER 또는 MediaPipe 중 하나라도 얼굴을 잡았는지 |
+| `emotions` | `dict[str, float]` | FER 감정 분포 |
+| `top_emotion` | `str` | FER 최상위 감정 |
+| `confidence` | `float` | FER 최고 감정 점수 |
+| `brow_eye_ratio` | `float \| None` | 눈썹-눈 간격 비율 |
+| `ear` | `float \| None` | 눈 aspect ratio |
+| `head_tilt_deg` | `float \| None` | 좌우 눈 위치 기반 머리 기울기 |
+
+### 후처리 로직
+
+- `_normalize_two_sentences()`
+  - 요약 결과를 최대 2문장으로 정리
+- `_normalize_keywords()`
+  - 키워드 3개 이하, 각 키워드 최대 3단어
+- `_normalize_priority()`
+  - 허용값: `높음`, `보통`, `낮음`
+- `_normalize_list()`
+  - 중복 제거, 개수 제한
+
+## 배포 및 실행
 
 ### 로컬 실행
 
 ```bash
-# 1. 의존성 설치
+cd fastapi
+python -m venv .venv
+. .venv/bin/activate
 pip install -r requirements.txt
-
-# 2. 환경변수 설정
-cp .env.example .env
-# .env 파일에 OPENAI_API_KEY 입력
-
-# 3. 서버 실행
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-> **Windows 한글 경로 주의**: MediaPipe C++ 라이브러리가 한글 경로를 읽지 못합니다.
-> `face_landmarker.task` 모델 파일은 홈 디렉터리(`C:\Users\계정명\`)에 자동 저장됩니다.
-> 배포 환경(Linux)에서는 코드 폴더에 저장되며 문제가 없습니다.
+Windows PowerShell이라면 활성화 명령은 아래처럼 달라집니다.
+
+```powershell
+cd fastapi
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+환경 변수 설정:
+
+```env
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-5.4-mini
+```
+
+실행:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Swagger UI:
+
+- `http://localhost:8000/docs`
+
+ReDoc:
+
+- `http://localhost:8000/redoc`
 
 ### Docker 실행
 
-이 프로젝트의 `Dockerfile`은 `confusion-api-base:latest` 이미지를 먼저 만들어 둔 상태를 전제로 합니다. 처음 실행하거나 베이스 이미지를 갱신해야 할 때는 아래 순서로 진행합니다.
+이 프로젝트는 무거운 의존성을 분리하기 위해 2단계 이미지 구조를 사용합니다.
+
+![CI/CD Flow](./docs/cicd-flow.svg)
+
+### 1. base 이미지 생성
+
+`Dockerfile.base`는 Python 3.11 slim 위에 시스템 패키지와 ML 의존성을 미리 설치합니다.
+
+- 설치 OS 패키지
+  - `libgl1`
+  - `libglib2.0-0`
+  - `libgomp1`
+  - `libgles2`
+  - `libegl1`
+- `fer`는 `--no-deps`로 별도 설치
+- 이후 `requirements.txt` 전체 설치
+
+실행:
 
 ```bash
-# 1. 베이스 이미지 빌드
-./build-base.sh
+cd fastapi
+bash ./build-base.sh
+```
 
-# 2. 앱 이미지 빌드 및 백그라운드 실행
+참고:
+
+- `build-base.sh`는 bash 스크립트이므로 Windows에서는 Git Bash, WSL, 또는 동일한 내용을 수동으로 실행해야 합니다.
+- `Dockerfile`은 `FROM confusion-api-base:latest`를 전제로 합니다.
+
+### 2. 앱 이미지 빌드 및 실행
+
+```bash
+cd fastapi
 docker compose up --build -d
-
-# 로그 확인
 docker compose logs -f
+```
 
-# 중지 및 컨테이너 제거
+중지:
+
+```bash
 docker compose down
 ```
 
-`docker-compose` 구버전 CLI를 쓰는 환경이라면 같은 명령을 `docker-compose`로 바꿔도 됩니다.
+### `docker-compose.yml`
 
----
+현재 compose 설정은 매우 단순합니다.
 
-## 8. Jenkins 배포
+- 서비스명: `confusion-api`
+- 컨테이너명: `confusion-api`
+- 포트 매핑: `8000:8000`
+- `.env` 파일 로드
+- `restart: always`
 
-Jenkins에서도 먼저 `confusion-api-base:latest` 이미지를 만들거나, 미리 레지스트리에 푸시한 베이스 이미지를 pull할 수 있어야 합니다. 그 다음 `docker compose down`으로 이전 컨테이너를 완전히 제거하면 `ContainerConfig` 오류를 줄일 수 있습니다.
+## 코드상 주의사항
 
-```groovy
-sh "./build-base.sh"
-sh "docker compose -f docker-compose.yml down || true"
-sh "docker compose -f docker-compose.yml up -d --build"
-```
+### 1. OpenAI API 키는 필수입니다
 
-**사전 조건**
-- Jenkins 유저가 docker 그룹에 속해야 합니다: `sudo usermod -aG docker jenkins`
-- `.env` 파일이 Jenkins workspace에 복사되어 있어야 합니다
-- 서버 첫 배포 시 `face_landmarker.task` (약 5MB) 가 자동 다운로드됩니다
-- Linux 배포 환경에서는 `face_landmarker.task`가 앱 디렉터리에 저장됩니다
+`FaceAnalyzer.__init__()`에서 `os.environ["OPENAI_API_KEY"]`를 직접 읽기 때문에 키가 없으면 앱 시작 자체가 실패합니다.
 
----
+### 2. 일부 프롬프트 문자열 인코딩 확인이 필요합니다
 
-## 9. 주요 의존성
+현재 `analyzer.py`의 GPT 시스템 프롬프트 문자열 일부는 소스상에서 한글이 깨져 보입니다. README는 코드의 의도된 동작을 기준으로 정리했지만, 실제 운영 환경에서는 파일 인코딩이 UTF-8로 정상 저장되어 있는지 점검하는 것이 좋습니다.
 
-| 패키지 | 버전 | 용도 |
-|--------|------|------|
-| `fastapi` | 0.111.0 | 웹 프레임워크 |
-| `uvicorn[standard]` | 0.29.0 | ASGI 서버 |
-| `python-multipart` | 0.0.9 | multipart/form-data 파싱 |
-| `fer` | 22.5.1 | 얼굴 감정 인식 (7가지 감정) |
-| `tensorflow` | 2.20.0 | FER 딥러닝 백엔드 |
-| `mediapipe` | 0.10.33 | 얼굴 랜드마크 추출 (478점) |
-| `opencv-python-headless` | 최신 | 이미지 디코딩 및 처리 |
-| `numpy` | >=2.0.0 | 수치 연산 |
-| `openai` | >=1.30.0 | GPT API 호출 |
-| `python-dotenv` | >=1.0.0 | 환경변수 로드 |
-| `moviepy` | 최신 | FER 내부 의존성 |
+### 3. `health`도 `/ai-api` 아래에 있습니다
+
+라우터 prefix가 `/ai-api`이므로 헬스체크 경로는 `/health`가 아니라 `/ai-api/health`입니다.
+
+### 4. 파일 업로드는 이미지 1장 기준입니다
+
+동영상, 여러 장 이미지, 배치 분석은 아직 구현되어 있지 않습니다.
+
+### 5. 얼굴 검출 실패 시 fallback이 존재합니다
+
+이미지 디코딩 실패 또는 얼굴 검출 실패 시에도 완전히 예외를 내기보다, 기본값 기반의 fallback 응답이 반환될 수 있습니다.
+
+## 개선 후보
+
+- GPT 프롬프트 인코딩 정리
+- 분석 기준값(`EAR < 0.18`, `head_tilt_deg >= 20`) 외부 설정화
+- 응답 로깅에 request id 추가
+- 테스트 코드 및 샘플 요청 컬렉션(Postman/Bruno) 추가
+- `.env.example` 제공
+- 배치 분석 또는 비디오 스트림 지원
+
+## 문서 업데이트 기준
+
+이 README는 2026-04-13 기준 저장소의 현재 코드 상태를 다시 읽고 작성했습니다. 문서와 코드가 달라질 수 있는 지점은 우선 아래 세 곳입니다.
+
+- 라우트/입력 검증: `main.py`
+- 분석/요약/코칭 로직: `analyzer.py`
+- 스키마 정의: `models.py`

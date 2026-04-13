@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f7f4ea"/>
+      <stop offset="100%" stop-color="#eef4fb"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
+      <path d="M0,0 L12,6 L0,12 Z" fill="#274c77"/>
+    </marker>
+    <style>
+      text { font-family: "Segoe UI", "Malgun Gothic", Arial, sans-serif; fill: #1d2733; }
+      .title { font-size: 28px; font-weight: 700; }
+      .subtitle { font-size: 14px; fill: #52606d; }
+      .box-title { font-size: 20px; font-weight: 700; }
+      .box-body { font-size: 14px; fill: #334e68; }
+      .small { font-size: 13px; fill: #486581; }
+      .label { font-size: 13px; font-weight: 600; fill: #274c77; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="720" rx="28" fill="url(#bg)"/>
+  <text x="600" y="56" text-anchor="middle" class="title">Confusion Detection FastAPI Architecture</text>
+  <text x="600" y="84" text-anchor="middle" class="subtitle">현재 코드 기준 서비스 관계도와 데이터 흐름</text>
+
+  <rect x="70" y="210" width="220" height="170" rx="24" fill="#e6f4ea" stroke="#2f855a" stroke-width="3"/>
+  <text x="180" y="250" text-anchor="middle" class="box-title">Student Client</text>
+  <text x="180" y="282" text-anchor="middle" class="box-body">학생 화면 캡처 이미지 업로드</text>
+  <text x="180" y="308" text-anchor="middle" class="box-body">`multipart/form-data`</text>
+  <text x="180" y="334" text-anchor="middle" class="box-body">지원 타입: JPEG / PNG / WebP</text>
+  <text x="180" y="360" text-anchor="middle" class="small">주요 호출: POST /ai-api/analyze/{student_id}</text>
+
+  <rect x="370" y="150" width="460" height="360" rx="28" fill="#deebf7" stroke="#2b6cb0" stroke-width="3"/>
+  <text x="600" y="196" text-anchor="middle" class="box-title">FastAPI Service</text>
+  <text x="600" y="224" text-anchor="middle" class="small">main.py + analyzer.py + models.py</text>
+
+  <rect x="410" y="252" width="180" height="96" rx="18" fill="#ffffff" stroke="#63b3ed" stroke-width="2"/>
+  <text x="500" y="286" text-anchor="middle" class="label">Input Validation</text>
+  <text x="500" y="312" text-anchor="middle" class="box-body">파일 타입 / 빈 파일 / 10MB 제한</text>
+  <text x="500" y="334" text-anchor="middle" class="small">Path, UploadFile, Pydantic</text>
+
+  <rect x="610" y="252" width="180" height="96" rx="18" fill="#ffffff" stroke="#63b3ed" stroke-width="2"/>
+  <text x="700" y="286" text-anchor="middle" class="label">Feature Extraction</text>
+  <text x="700" y="312" text-anchor="middle" class="box-body">FER + MediaPipe</text>
+  <text x="700" y="334" text-anchor="middle" class="small">emotion, EAR, tilt, brow-eye ratio</text>
+
+  <rect x="410" y="372" width="180" height="96" rx="18" fill="#ffffff" stroke="#63b3ed" stroke-width="2"/>
+  <text x="500" y="406" text-anchor="middle" class="label">GPT Decision</text>
+  <text x="500" y="432" text-anchor="middle" class="box-body">confused 여부와 이유 생성</text>
+  <text x="500" y="454" text-anchor="middle" class="small">JSON 파싱 실패 시 fallback</text>
+
+  <rect x="610" y="372" width="180" height="96" rx="18" fill="#ffffff" stroke="#63b3ed" stroke-width="2"/>
+  <text x="700" y="406" text-anchor="middle" class="label">Signal Classification</text>
+  <text x="700" y="432" text-anchor="middle" class="box-body">signalType / Subtype / Label</text>
+  <text x="700" y="454" text-anchor="middle" class="small">규칙 기반 최종 해석</text>
+
+  <rect x="905" y="90" width="220" height="145" rx="24" fill="#fff2df" stroke="#dd6b20" stroke-width="3"/>
+  <text x="1015" y="132" text-anchor="middle" class="box-title">OpenAI API</text>
+  <text x="1015" y="162" text-anchor="middle" class="box-body">기본 모델: gpt-5.4-mini</text>
+  <text x="1015" y="188" text-anchor="middle" class="box-body">분석, 요약, 코칭 모두 사용</text>
+  <text x="1015" y="212" text-anchor="middle" class="small">OPENAI_MODEL 환경 변수로 변경 가능</text>
+
+  <rect x="905" y="290" width="220" height="175" rx="24" fill="#efe3fb" stroke="#6b46c1" stroke-width="3"/>
+  <text x="1015" y="332" text-anchor="middle" class="box-title">Backend / Dashboard</text>
+  <text x="1015" y="362" text-anchor="middle" class="box-body">POST /ai-api/coaching</text>
+  <text x="1015" y="388" text-anchor="middle" class="box-body">POST /ai-api/summarize</text>
+  <text x="1015" y="414" text-anchor="middle" class="box-body">GET /ai-api/health</text>
+  <text x="1015" y="440" text-anchor="middle" class="small">강사용 집계 데이터와 STT 텍스트 전달</text>
+
+  <line x1="290" y1="295" x2="370" y2="295" stroke="#2f855a" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="330" y="278" text-anchor="middle" class="label">이미지 업로드</text>
+
+  <line x1="830" y1="284" x2="905" y2="180" stroke="#dd6b20" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="870" y="212" text-anchor="middle" class="label">특징값 전달</text>
+
+  <line x1="905" y1="216" x2="830" y2="386" stroke="#dd6b20" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="882" y="316" text-anchor="middle" class="label">JSON 응답</text>
+
+  <line x1="830" y1="400" x2="905" y2="400" stroke="#6b46c1" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="866" y="382" text-anchor="middle" class="label">코칭/요약 응답</text>
+
+  <line x1="905" y1="350" x2="830" y2="350" stroke="#6b46c1" stroke-width="4" marker-end="url(#arrow)"/>
+  <text x="866" y="334" text-anchor="middle" class="label">집계 데이터/STT</text>
+
+  <rect x="78" y="566" width="1044" height="94" rx="20" fill="#ffffff" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="108" y="600" class="label">핵심 포인트</text>
+  <text x="108" y="628" class="box-body">1. analyze는 이미지 1장 단위 분석 API이고, coaching/summarize는 텍스트·집계 입력 API입니다.</text>
+  <text x="108" y="650" class="box-body">2. 앱 시작 시 FaceAnalyzer가 초기화되며, OpenAI API 키가 없으면 서비스 시작이 실패합니다.</text>
+  <text x="108" y="672" class="box-body">3. health 엔드포인트도 `/ai-api` prefix 아래에 포함됩니다.</text>
+</svg>
